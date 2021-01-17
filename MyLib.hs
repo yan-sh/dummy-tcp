@@ -88,22 +88,22 @@ optParser = info
       [ fullDesc
       , progDesc $ mconcat
           [ "Dummy tcp server.\n"
-          , "Delay = const + [total connections] * total_coeff + [active connections] * active_coeff"
+          , "Delay = const + [total connections] * total-coeff + [active connections] * active-coeff"
           ]
       ]
     where
       programOptions = Opts
         <$> option auto do mconcat [long "port", value 9922]
-        <*> option auto do mconcat [long "socket_max_queue", value 1024]
-        <*> option auto do mconcat [long "socket_max_receive", value 1024]
-        <*> strOption do mconcat [long "accept_message", value "HELLO"]
-        <*> strOption do mconcat [long "receive_message", value "HI"]
-        <*> option auto do mconcat [long "const_delay_accept", value 0]
-        <*> option auto do mconcat [long "const_delay_receive", value 0]
-        <*> option auto do mconcat [long "total_coeff_accept", value 0]
-        <*> option auto do mconcat [long "total_coeff_receive", value 0]
-        <*> option auto do mconcat [long "active_coeff_accept", value 0]
-        <*> option auto do mconcat [long "active_coeff_receive", value 0]
+        <*> option auto do mconcat [long "socket-max-queue", value 1024]
+        <*> option auto do mconcat [long "socket-max-receive", value 1024]
+        <*> strOption do mconcat [long "accept-message", value "HELLO"]
+        <*> strOption do mconcat [long "receive-message", value "HI"]
+        <*> option auto do mconcat [long "const-delay-accept", value 0]
+        <*> option auto do mconcat [long "const-delay-receive", value 0]
+        <*> option auto do mconcat [long "total-coeff-accept", value 0]
+        <*> option auto do mconcat [long "total-coeff-receive", value 0]
+        <*> option auto do mconcat [long "active-coeff-accept", value 0]
+        <*> option auto do mconcat [long "active-coeff-receive", value 0]
 
 
 run :: IO ()
