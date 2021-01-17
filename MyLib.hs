@@ -165,8 +165,8 @@ withSocket Connection{..} f = f socket
 
 newConn :: Socket -> IO Connection
 newConn socket' = do
-  incTotalConn
   socket <- fst <$> accept socket'
+  incTotalConn
   status <- newTVarIO Inactive
   pure Connection {..}
 
