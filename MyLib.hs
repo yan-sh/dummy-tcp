@@ -22,21 +22,8 @@ import Network.Socket.ByteString (recv, sendAll)
 import Control.Concurrent.STM
 import Control.Concurrent (ThreadId, threadDelay, forkIO)
 import System.IO.Unsafe (unsafePerformIO)
+import Options.Applicative
 
-port :: Int
-port = 9922
-
-socketMaxQueue :: Int
-socketMaxQueue = 1024
-
-socketMaxRec :: Int
-socketMaxRec = 1024
-
-acceptMessage :: B.ByteString
-acceptMessage = toBS "HELLO"
-
-receiveMessage :: B.ByteString
-receiveMessage = toBS "HI"
 
 totalConn :: TVar Int
 totalConn = unsafePerformIO $ newTVarIO 0
@@ -47,6 +34,14 @@ activeConn = unsafePerformIO $ newTVarIO 0
 {-# NOINLINE activeConn #-}
 
 
+data Opts = Opts
+  { port :: Int
+  , socketMaxQueue :: Int
+  , socketMaxRec :: Int
+  , acceptMessage :: String
+  , receiveMessage :: String
+  }
+
 data ConnectionStatus = Active | Inactive
   deriving Eq
 
@@ -56,8 +51,8 @@ data Connection = Connection
   }
 
 
-prepareSocket :: Socket -> AddrInfo -> IO Socket
-prepareSocket socket addr@AddrInfo{..} = do
+prepareSocket :: Opts -> Socket -> AddrInfo -> IO Socket
+prepareSocket Opts{..} socket addr@AddrInfo{..} = do
   setSocketOption socket ReuseAddr 1
   bind socket addrAddress
   listen socket socketMaxQueue
@@ -68,27 +63,39 @@ debugLogger :: IO ()
 debugLogger = do
   total <- readTVarIO totalConn
   active <- readTVarIO activeConn
-  putStrLn $ mconcat ["total - ", show total, ", active - ", show active]
+  putStrLn $ mconcat ["total ", show total, ", active ", show active]
   threadDelay 1_000_000
   debugLogger
 
 
+optParser :: ParserInfo Opts
+optParser = info
+  do helper <*> programOptions
+  do fullDesc
+    where
+      programOptions = Opts
+        <$> option auto do mconcat [long "port", value 9922]
+        <*> option auto do mconcat [long "socket_max_queue", value 1024]
+        <*> option auto do mconcat [long "socket_max_receive", value 1024]
+        <*> strOption do mconcat [long "accept_message", value "HELLO"]
+        <*> strOption do mconcat [long "receive_message", value "HI"]
+
 run :: IO ()
 run = withSocketsDo do
+  opts@Opts{..} <- execParser optParser
   forkIO debugLogger
   addr <- head <$> getAddrInfo
     do Just defaultHints {addrSocketType = Stream}
     do Just "127.0.0.1"
     do Just $ show port
-  E.bracketOnError (openSocket addr) close \socket -> do
-    prepareSocket socket addr >>= loop
+  E.bracketOnError (openSocket addr) close \socket -> do prepareSocket opts socket addr >>= loop opts
 
 
-loop :: Socket -> IO ()
-loop socket' = do
+loop :: Opts -> Socket -> IO ()
+loop Opts{..} socket' = do
   forever $ E.bracketOnError (newConn socket') closeConn \conn -> do
     void $ async do
-      withSocket conn (`sendAll` acceptMessage)
+      withSocket conn (`sendAll` toBS acceptMessage)
       go conn
       closeConn conn
       where
@@ -96,7 +103,7 @@ loop socket' = do
           msg <- withSocket conn (`recv` socketMaxRec)
           unless (B.null msg) do
             activateConn conn
-            withSocket conn (`sendAll` receiveMessage)
+            withSocket conn (`sendAll` toBS receiveMessage)
             go conn
 
 

@@ -21,7 +21,7 @@ library
   -- other-modules:
   -- other-extensions:
   build-depends:
-    base ^>=4.13.0.0, bytestring, binary, network, exceptions, async, stm
+    base ^>=4.13.0.0, bytestring, binary, network, exceptions, async, stm, optparse-applicative
   -- hs-source-dirs:
   default-language:    Haskell2010
 
@@ -30,6 +30,6 @@ executable tcp-server
   other-modules:       MyLib
   -- other-extensions:
   build-depends:
-    base ^>=4.13.0.0, tcp-server, bytestring, binary, network, exceptions, async, stm
+    base ^>=4.13.0.0, tcp-server, bytestring, binary, network, exceptions, async, stm, optparse-applicative
   -- hs-source-dirs:
   default-language:    Haskell2010
