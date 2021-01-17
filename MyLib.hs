@@ -40,6 +40,12 @@ data Opts = Opts
   , socketMaxRec :: Int
   , acceptMessage :: String
   , receiveMessage :: String
+  , constDelayAccept :: Int
+  , constDelayReceive :: Int
+  , totalCoefficientAccept :: Int
+  , totalCoefficientReceive :: Int
+  , activeCoefficientAccept :: Int
+  , activeCoefficientReceive :: Int
   }
 
 data ConnectionStatus = Active | Inactive
@@ -59,19 +65,32 @@ prepareSocket Opts{..} socket addr@AddrInfo{..} = do
   pure socket
 
 
-debugLogger :: IO ()
-debugLogger = do
+debugLogger :: Opts -> IO ()
+debugLogger opts = do
   total <- readTVarIO totalConn
   active <- readTVarIO activeConn
-  putStrLn $ mconcat ["total ", show total, ", active ", show active]
+  acceptDelay <- getAcceptDelay opts
+  receiceDelay <- getReceiveDelay opts
+  putStrLn $ mconcat
+    [ "total " , show total, ", "
+    , "active ", show active, ", "
+    , "accept delay ", show acceptDelay, ", "
+    , "receive delay ", show receiceDelay
+    ]
   threadDelay 1_000_000
-  debugLogger
+  debugLogger opts
 
 
 optParser :: ParserInfo Opts
 optParser = info
   do helper <*> programOptions
-  do fullDesc
+  do mconcat
+      [ fullDesc
+      , progDesc $ mconcat
+          [ "Dummy tcp server.\n"
+          , "Delay = const + [total connections] * total_coeff + [active connections] * active_coeff"
+          ]
+      ]
     where
       programOptions = Opts
         <$> option auto do mconcat [long "port", value 9922]
@@ -79,22 +98,31 @@ optParser = info
         <*> option auto do mconcat [long "socket_max_receive", value 1024]
         <*> strOption do mconcat [long "accept_message", value "HELLO"]
         <*> strOption do mconcat [long "receive_message", value "HI"]
+        <*> option auto do mconcat [long "const_delay_accept", value 0]
+        <*> option auto do mconcat [long "const_delay_receive", value 0]
+        <*> option auto do mconcat [long "total_coeff_accept", value 0]
+        <*> option auto do mconcat [long "total_coeff_receive", value 0]
+        <*> option auto do mconcat [long "active_coeff_accept", value 0]
+        <*> option auto do mconcat [long "active_coeff_receive", value 0]
+
 
 run :: IO ()
 run = withSocketsDo do
   opts@Opts{..} <- execParser optParser
-  forkIO debugLogger
+  async $ debugLogger opts
   addr <- head <$> getAddrInfo
     do Just defaultHints {addrSocketType = Stream}
     do Just "127.0.0.1"
     do Just $ show port
-  E.bracketOnError (openSocket addr) close \socket -> do prepareSocket opts socket addr >>= loop opts
+  E.bracketOnError (openSocket addr) close \socket -> do
+    prepareSocket opts socket addr >>= loop opts
 
 
 loop :: Opts -> Socket -> IO ()
-loop Opts{..} socket' = do
+loop opts@Opts{..} socket' = do
   forever $ E.bracketOnError (newConn socket') closeConn \conn -> do
     void $ async do
+      getAcceptDelay opts >>= threadDelay
       withSocket conn (`sendAll` toBS acceptMessage)
       go conn
       closeConn conn
@@ -102,6 +130,7 @@ loop Opts{..} socket' = do
         go conn = do
           msg <- withSocket conn (`recv` socketMaxRec)
           unless (B.null msg) do
+            getReceiveDelay opts >>= threadDelay
             activateConn conn
             withSocket conn (`sendAll` toBS receiveMessage)
             go conn
@@ -112,6 +141,24 @@ toBS s = BL.toStrict $ mconcat
   [ encode @Int32 $ fromIntegral $ length s
   , BL.fromStrict $ BC8.pack s
   ]
+
+getAcceptDelay :: Opts -> IO Int
+getAcceptDelay Opts{..} = do
+  total <- readTVarIO totalConn
+  active <- readTVarIO activeConn
+  pure $ calculateDelay total totalCoefficientAccept active activeCoefficientAccept constDelayAccept
+
+getReceiveDelay :: Opts -> IO Int
+getReceiveDelay Opts{..} = do
+  total <- readTVarIO totalConn
+  active <- readTVarIO activeConn
+  pure $ calculateDelay total totalCoefficientReceive active activeCoefficientReceive constDelayReceive
+
+
+
+calculateDelay :: Int -> Int -> Int -> Int -> Int -> Int
+calculateDelay total totalCoeff active activeCoeff c =
+  c + total * totalCoeff + active * activeCoeff
 
 withSocket :: Connection -> (Socket -> IO a) -> IO a
 withSocket Connection{..} f = f socket
